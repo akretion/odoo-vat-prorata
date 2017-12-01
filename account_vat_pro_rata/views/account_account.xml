@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+  License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
+-->
+
+<odoo>
+
+
+<record id="view_account_form" model="ir.ui.view">
+    <field name="name">vat.prorata.account.account.form</field>
+    <field name="model">account.account</field>
+    <field name="inherit_id" ref="account.view_account_form"/>
+    <field name="arch" type="xml">
+        <xpath expr="//div[@class='row']/.." position="after">
+            <group name="vat_prorata" string="VAT Pro Rata">
+                <field name="vat_subject" attrs="{'invisible': [('internal_type', '!=', 'other')]}"/>
+                <field name="vat_deductible" attrs="{'invisible': [('internal_type', '!=', 'other')]}"/>
+            </group>
+        </xpath>
+    </field>
+</record>
+
+<record id="view_account_search" model="ir.ui.view">
+    <field name="name">vat.prorata.account.account.search</field>
+    <field name="model">account.account</field>
+    <field name="inherit_id" ref="account.view_account_search"/>
+    <field name="arch" type="xml">
+        <filter domain="[('internal_type','=','payable')]" position="after">
+            <separator/>
+            <filter name="vat_subject" string="VAT Subject" domain="[('vat_subject', '=', True)]"/>
+        </filter>
+    </field>
+</record>
+
+
+</odoo>

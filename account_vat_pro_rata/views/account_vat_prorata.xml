@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+  License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
+-->
+
+<odoo>
+
+
+<record id="account_vat_prorata_form" model="ir.ui.view">
+    <field name="name">account.vat.prorata.form</field>
+    <field name="model">account.vat.prorata</field>
+    <field name="arch" type="xml">
+        <form string="VAT Pro Rata">
+            <header>
+                <button name="button_compute_ratio" type="object" string="Compute Ratio" states="draft" class="btn-primary"/>
+                <button name="button_generate_move" type="object" string="Generate Move" states="ratio" class="btn-primary"/>
+                <button name="button_back2draft" type="object" string="Back to Draft" states="ratio,done"/>
+                <field name="state" widget="statusbar"/>
+            </header>
+            <sheet>
+                <div class="oe_button_box" name="button_box">
+                    <button name="button_prorata_line_tree"
+                        class="oe_stat_button"
+                        icon="fa-building-o"
+                        type="object"
+                        help="List view of lines"
+                        states="done">
+                        <div class="o_form_field o_stat_info">
+                            <span class="o_stat_text">Lines Fullscreen</span>
+                        </div>
+                    </button>
+                </div>
+                <group name="top">
+                    <group name="top-left">
+                        <field name="date_from"/>
+                        <field name="date_to"/>
+                        <label for="computed_perct"/>
+                        <div>
+                            <field name="computed_perct" class="oe_inline"/>
+                            <label string=" %%" class="oe_inline"/>
+                        </div>
+                        <label for="used_perct"/>
+                        <div>
+                            <field name="used_perct" class="oe_inline"/>
+                            <label string=" %%" class="oe_inline"/>
+                        </div>
+
+                    </group>
+                    <group name="top-right">
+                        <field name="target_move" widget="radio"/>
+                        <field name="source_journal_ids" widget="many2many_tags"/>
+                        <field name="company_currency_id" invisible="1"/>
+                        <field name="move_label"/>
+                        <field name="journal_id"/>
+                        <field name="move_id"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                    </group>
+                    <group name="subject_lines" string="VAT Subject">
+                        <field name="subject_line_ids" nolabel="1"/>
+                    </group>
+                    <group name="nosubject_lines" string="No VAT Subject">
+                        <field name="nosubject_line_ids" nolabel="1"/>
+                    </group>
+                </group>
+                <group name="lines" colspan="2" string="VAT Pro Rata Lines">
+                    <field name="line_ids" nolabel="1"/>
+                </group>
+            </sheet>
+            <div class="oe_chatter">
+                <field name="message_follower_ids" widget="mail_followers"/>
+                <field name="message_ids" widget="mail_thread"/>
+            </div>
+        </form>
+    </field>
+</record>
+
+<record id="account_vat_prorata_tree" model="ir.ui.view">
+    <field name="name">account.vat.prorata.tree</field>
+    <field name="model">account.vat.prorata</field>
+    <field name="arch" type="xml">
+        <tree string="VAT Pro Rata">
+            <field name="date_from"/>
+            <field name="date_to"/>
+            <field name="state"/>
+            <field name="company_id" groups="base.group_multi_company"/>
+        </tree>
+    </field>
+</record>
+
+<record id="account_vat_prorata_subject_line_tree" model="ir.ui.view">
+    <field name="name">account.vat.prorata.subject.line.tree</field>
+    <field name="model">account.vat.prorata.subject.line</field>
+    <field name="arch" type="xml">
+        <tree>
+            <field name="account_id"/>
+            <field name="debit" sum="1"/>
+            <field name="credit" sum="1"/>
+            <field name="balance" sum="1"/>
+            <field name="company_currency_id" invisible="1"/>
+        </tree>
+    </field>
+</record>
+
+<record id="account_vat_prorata_action" model="ir.actions.act_window">
+    <field name="name">VAT Pro Rata</field>
+    <field name="res_model">account.vat.prorata</field>
+    <field name="view_mode">tree,form</field>
+</record>
+
+<menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries" sequence="100"/>
+
+<record id="account_vat_prorata_line_tree" model="ir.ui.view">
+    <field name="name">account.vat.prorata.line.tree</field>
+    <field name="model">account.vat.prorata.line</field>
+    <field name="arch" type="xml">
+        <tree>
+            <field name="parent_id" invisible="not context.get('prorata_line_main_view')"/>
+            <field name="company_currency_id" invisible="1"/>
+            <field name="move_id"/>
+            <field name="date"/>
+            <field name="partner_id"/>
+            <field name="account_id"/>
+            <field name="label"/>
+            <field name="original_vat_amount"/>
+            <field name="prorata_vat_amount" sum="1"/>
+            <field name="counterpart_amount" sum="1"/>
+            <field name="original_amount"/>
+            <field name="vat_rate"/>
+        </tree>
+    </field>
+</record>
+
+<record id="account_vat_prorata_line_search" model="ir.ui.view">
+    <field name="name">account.vat.prorata.line.search</field>
+    <field name="model">account.vat.prorata.line</field>
+    <field name="arch" type="xml">
+        <search>
+            <field name="move_id"/>
+            <field name="date"/>
+            <group string="Group By" name="groupby">
+                <filter name="account_groupby" string="Account" context="{'group_by': 'account_id'}"/>
+                <filter name="move_groupby" string="Move" context="{'group_by': 'move_id'}"/>
+            </group>
+        </search>
+    </field>
+</record>
+
+<record id="account_vat_prorata_line_action" model="ir.actions.act_window">
+    <field name="name">VAT Pro Rata Lines</field>
+    <field name="res_model">account.vat.prorata.line</field>
+    <field name="view_mode">tree,form</field>
+    <field name="limit">500</field>
+</record>
+
+
+</odoo>
