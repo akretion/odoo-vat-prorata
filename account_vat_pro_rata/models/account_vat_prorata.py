@@ -193,14 +193,12 @@ class AccountVatProrata(models.Model):
         amo = self.env['account.move']
         aao = self.env['account.account']
         ato = self.env['account.tax']
+        company = self.company_id
+        # delete existing prorata lines
         lines = avplo.search([('parent_id', '=', self.id)])
         if lines:
             lines.unlink()
-        domain = [('journal_id', 'in', self.source_journal_ids.ids)]
-        if self.target_move == 'posted':
-            domain.append(('state', '=', 'posted'))
-        moves = amo.search(domain)
-        company = self.company_id
+        # Prepare datas
         ccur_prec = company.currency_id.rounding
         vat_deduc_accounts = aao.search([
             ('vat_deductible', '=', True), ('company_id', '=', company.id)])
@@ -221,18 +219,34 @@ class AccountVatProrata(models.Model):
             raise UserError(_('No accounts are configured as VAT deductible'))
         ratio = (100.0 - self.used_perct) / 100.0
         # Collect data
+        domain = [
+            ('journal_id', 'in', self.source_journal_ids.ids),
+            ('date', '>=', self.date_from),
+            ('date', '<=', self.date_to),
+            ('company_id', '=', company.id),
+            ]
+        if self.target_move == 'posted':
+            domain.append(('state', '=', 'posted'))
+        moves = amo.search(domain)
         work_moves = []
         for move in moves:
             tmp = {
                 'vat': {},
+                # key = line ID
+                # value = {'bal': balance, 'prorata': balance * rate}
                 'other_tax': {},
+                # key = line ID
+                # value = {'bal': balance, 'vat_rate': 5.5, 'weight': weight}
                 'other_notax': {},
+                # key = line ID
+                # value = {'bal': balance, 'vat_rate': 100, 'weight': weight}
                 'total_vat': 0.0,
                 'total_weight_other_tax': 0.0,
                 'total_weight_other_notax': 0.0}
             for line in move.line_ids:
                 if float_is_zero(line.balance, precision_rounding=ccur_prec):
                     continue
+                # VAT line
                 if line.account_id in vat_deduc_accounts:
                     prorata_amt = float_round(
                         ratio * line.balance,
@@ -241,6 +255,7 @@ class AccountVatProrata(models.Model):
                         'bal': line.balance,
                         'prorata': prorata_amt}
                     tmp['total_vat'] += prorata_amt
+                # Expense line with link to a VAT tax
                 elif (
                         speed_acc2type[line.account_id.id] == 'other' and
                         line.tax_ids and
@@ -252,6 +267,7 @@ class AccountVatProrata(models.Model):
                         'vat_rate': vat_rate,
                         'weight': weight}
                     tmp['total_weight_other_tax'] += weight
+                # Expense line without link to a VAT tax
                 elif speed_acc2type[line.account_id.id] == 'other':
                     vat_rate = 100
                     weight = vat_rate * line.balance
