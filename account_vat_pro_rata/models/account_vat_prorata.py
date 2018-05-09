@@ -22,15 +22,21 @@ class AccountVatProrata(models.Model):
         date_from_dt = today_dt + relativedelta(months=-1) +\
             relativedelta(month=1, day=1)
         date_to_dt = today_dt + relativedelta(day=1) + relativedelta(days=-1)
+        company = self.env.user.company_id
         jl_id = self.env.user.company_id.default_vat_prorata_journal_id.id\
             or False
-        purchase_jrls = self.env['account.journal'].search([
-            ('type', '=', 'purchase')])
+        source_jrls = self.env['account.journal'].search([
+            ('type', '=', 'purchase'), ('company_id', '=', company.id)])
+        # For those who use the module account_tax_cash_basis
+        if (
+                hasattr(company, 'tax_cash_basis_journal_id') and
+                company.tax_cash_basis_journal_id):
+            source_jrls |= company.tax_cash_basis_journal_id
         res.update({
             'date_from': fields.Date.to_string(date_from_dt),
             'date_to': fields.Date.to_string(date_to_dt),
             'journal_id': jl_id,
-            'source_journal_ids': purchase_jrls.ids,
+            'source_journal_ids': source_jrls.ids,
             'move_label': _('VAT Pro Rata'),
         })
         return res
@@ -207,18 +213,19 @@ class AccountVatProrata(models.Model):
             [('company_id', '=', company.id)], ['internal_type'])
         for acc in accounts:
             speed_acc2type[acc['id']] = acc['internal_type']
+        speed_vattax2rate = {}
         vattaxes = ato.search([
+            ('company_id', '=', company.id),
             ('type_tax_use', '=', 'purchase'),
             ('amount_type', '=', 'percent'),
             ('amount', '!=', False)])
-        speed_vattax2rate = {}
         for vattax in vattaxes:
             if not float_is_zero(vattax.amount, precision_digits=4):
                 speed_vattax2rate[vattax.id] = vattax.amount
         if not vat_deduc_accounts:
             raise UserError(_('No accounts are configured as VAT deductible'))
         ratio = (100.0 - self.used_perct) / 100.0
-        # Collect data
+        # Get moves
         domain = [
             ('journal_id', 'in', self.source_journal_ids.ids),
             ('date', '>=', self.date_from),
