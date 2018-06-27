@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+# Copyright 2017-2018 Akretion
+# @author: Alexis de Lattre <alexis.delattre@akretion.com>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import fields, models, api, _
@@ -27,6 +28,8 @@ class AccountVatProrata(models.Model):
             or False
         source_jrls = self.env['account.journal'].search([
             ('type', '=', 'purchase'), ('company_id', '=', company.id)])
+        ratio_source_jrls = self.env['account.journal'].search([
+            ('type', '=', 'sale'), ('company_id', '=', company.id)])
         # For those who use the module account_tax_cash_basis
         if (
                 hasattr(company, 'tax_cash_basis_journal_id') and
@@ -37,6 +40,7 @@ class AccountVatProrata(models.Model):
             'date_to': fields.Date.to_string(date_to_dt),
             'journal_id': jl_id,
             'source_journal_ids': source_jrls.ids,
+            'ratio_source_journal_ids': ratio_source_jrls.ids,
             'move_label': _('VAT Pro Rata'),
         })
         return res
@@ -49,6 +53,12 @@ class AccountVatProrata(models.Model):
         string="Date To",
         required=True, readonly=True, states={'draft': [('readonly', False)]},
         copy=False, track_visibility='onchange')
+    ratio_source_journal_ids = fields.Many2many(
+        'account.journal',
+        'account_vat_prorata_ratio_journal_rel', 'vat_prorata_id',
+        'journal_id', string='Compute Ratio Source Journals',
+        readonly=True, states={'draft': [('readonly', False)]},
+        required=True)
     target_move = fields.Selection([
         ('posted', 'All Posted Entries'),
         ('all', 'All Entries')],
@@ -154,13 +164,16 @@ class AccountVatProrata(models.Model):
                 AND aml.company_id = %s
                 AND am.date >= %s
                 AND am.date <= %s
+                AND am.journal_id in %s
             """ + target_move_sql + \
             """
                 GROUP BY aml.account_id, aa.code, aa.vat_subject
                 ORDER BY aa.code
             """
         self._cr.execute(
-            request, (self.company_id.id, self.date_from, self.date_to))
+            request,
+            (self.company_id.id, self.date_from, self.date_to,
+             tuple(self.ratio_source_journal_ids.ids)))
         total = 0.0
         vat_subject_total = 0.0
         for row in self._cr.dictfetchall():

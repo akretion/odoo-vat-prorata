@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+  Copyright 2017-2018 Akretion
+  @author: Alexis de Lattre <alexis.delattre@akretion.com>
   License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 -->
 
@@ -14,7 +15,7 @@
         <form string="VAT Pro Rata">
             <header>
                 <button name="button_compute_ratio" type="object" string="Compute Ratio" states="draft" class="btn-primary"/>
-                <button name="button_generate_move" type="object" string="Generate Move" states="ratio" class="btn-primary"/>
+                <button name="button_generate_move" type="object" string="Generate Pro Rata Lines and Journal Entry" states="ratio" class="btn-primary"/>
                 <button name="button_back2draft" type="object" string="Back to Draft" states="ratio,done"/>
                 <field name="state" widget="statusbar"/>
             </header>
@@ -35,6 +36,7 @@
                     <group name="top-left">
                         <field name="date_from"/>
                         <field name="date_to"/>
+                        <field name="ratio_source_journal_ids" widget="many2many_tags"/>
                         <label for="computed_perct"/>
                         <div>
                             <field name="computed_perct" class="oe_inline"/>
