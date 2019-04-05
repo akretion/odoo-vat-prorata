@@ -97,18 +97,12 @@ class AccountVatProrata(models.Model):
     used_perct = fields.Float(
         string='VAT Subject Used Ratio', track_visibility='onchange',
         states={'done': [('readonly', True)]})
-    # tax_total = fields.Monetary(  # Needed ?
-    #    string='Total Tax', currency_field='company_currency_id',
-    #    readonly=True)
-    # tax_prorata = fields.Monetary(
-    #    string='Total Tax Pro Rata', currency_field='company_currency_id',
-    #    readonly=True)
     company_id = fields.Many2one(
         'res.company', string='Company', required=True,
         states={'done': [('readonly', True)]},
         default=lambda self: self.env['res.company']._company_default_get(
             'account.vat.prorata'))
-    company_currency_id = fields.Many2one(  # Needed ?
+    company_currency_id = fields.Many2one(
         related='company_id.currency_id', readonly=True, store=True,
         string='Company Currency')
     state = fields.Selection([
@@ -373,6 +367,7 @@ class AccountVatProrata(models.Model):
                 dlines[line.account_id] = amt
         label = self.move_label
         lines = []
+        prec_r = self.company_currency_id.rounding
         # for ordering by account code
         for account in aao.search([('company_id', '=', company.id)]):
             if account in dlines:
@@ -380,7 +375,8 @@ class AccountVatProrata(models.Model):
                     'account_id': account.id,
                     'name': label,
                     }
-                amount = dlines[account]
+                amount = float_round(
+                    dlines[account], precision_rounding=prec_r)
                 if float_compare(amount, 0, precision_rounding=prec) > 0:
                     lvals['credit'] = amount
                 else:
