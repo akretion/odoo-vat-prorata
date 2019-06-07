@@ -5,6 +5,7 @@
 
 from odoo import fields, models, api, _
 from odoo.tools import float_compare, float_is_zero, float_round
+import odoo.addons.decimal_precision as dp
 from odoo.exceptions import UserError
 from dateutil.relativedelta import relativedelta
 
@@ -93,10 +94,12 @@ class AccountVatProrata(models.Model):
         string='No VAT Subject Accounts', readonly=True)
     computed_perct = fields.Float(
         string='VAT Subject Computed Ratio', readonly=True,
+        digits=dp.get_precision('VAT Pro Rata Ratio'),
         track_visibility='onchange')
     used_perct = fields.Float(
-        string='VAT Subject Used Ratio', track_visibility='onchange',
-        states={'done': [('readonly', True)]})
+        string='VAT Subject Used Ratio', states={'done': [('readonly', True)]},
+        digits=dp.get_precision('VAT Pro Rata Ratio'),
+        track_visibility='onchange')
     company_id = fields.Many2one(
         'res.company', string='Company', required=True,
         states={'done': [('readonly', True)]},
@@ -190,8 +193,11 @@ class AccountVatProrata(models.Model):
             avpslo.create(vals)
 
         perct = 0.0
+        perct_prec = self.env['decimal.precision'].precision_get(
+            'VAT Pro Rata Ratio')
         if total:
-            perct = 100 * vat_subject_total / total
+            perct = float_round(
+                100 * vat_subject_total / total, precision_digits=perct_prec)
 
         self.write({
             'state': 'ratio',
@@ -212,6 +218,7 @@ class AccountVatProrata(models.Model):
         if lines:
             lines.unlink()
         # Prepare datas
+        ccur = company.currency_id
         ccur_prec = company.currency_id.rounding
         vat_deduc_accounts = aao.search([
             ('vat_deductible', '=', True), ('company_id', '=', company.id)])
@@ -262,9 +269,7 @@ class AccountVatProrata(models.Model):
                     continue
                 # VAT line
                 if line.account_id in vat_deduc_accounts:
-                    prorata_amt = float_round(
-                        ratio * line.balance,
-                        precision_rounding=ccur_prec)
+                    prorata_amt = ccur.round(ratio * line.balance)
                     tmp['vat'][line.id] = {
                         'bal': line.balance,
                         'prorata': prorata_amt}
@@ -305,13 +310,14 @@ class AccountVatProrata(models.Model):
                     not float_is_zero(
                         work_move['total_weight_other_tax'],
                         precision_rounding=ccur_prec)):
-                self.expense_prorata_line_create(work_move, 'other_tax')
+                self.expense_prorata_line_create(work_move, 'other_tax', ccur)
             elif (
                     work_move['other_notax'] and
                     not float_is_zero(
                         work_move['total_weight_other_notax'],
                         precision_rounding=ccur_prec)):
-                self.expense_prorata_line_create(work_move, 'other_notax')
+                self.expense_prorata_line_create(
+                    work_move, 'other_notax', ccur)
             else:
                 raise UserError(_(
                     'This scenario is not supported (debug: %s)') % work_move)
@@ -324,16 +330,17 @@ class AccountVatProrata(models.Model):
                     })
         return
 
-    def expense_prorata_line_create(self, work_move, acc_type):
+    def expense_prorata_line_create(self, work_move, acc_type, ccur):
         avplo = self.env['account.vat.prorata.line']
         i = len(work_move[acc_type])
-        vat_left = work_move['total_vat']
+        vat_left = work_move['total_vat']  # already rounded
         for line_id, ldict in work_move[acc_type].iteritems():
             if i == 1:
-                amt = vat_left
+                amt = ccur.round(vat_left)  # rounding "optional" here
             else:
-                amt = work_move['total_vat'] * ldict['weight'] /\
-                    work_move['total_weight_' + acc_type]
+                amt = ccur.round(
+                    work_move['total_vat'] * ldict['weight'] /
+                    work_move['total_weight_' + acc_type])
             vat_left -= amt
             avplo.create({
                 'parent_id': self.id,
@@ -348,8 +355,8 @@ class AccountVatProrata(models.Model):
         self.ensure_one()
         aao = self.env['account.account']
         company = self.company_id
-        company_currency = company.currency_id
-        prec = company_currency.rounding
+        ccur = company.currency_id
+        prec = ccur.rounding
         vat_deduc_accounts = aao.search([
             ('vat_deductible', '=', True), ('company_id', '=', company.id)])
         if not self.line_ids:
@@ -367,7 +374,6 @@ class AccountVatProrata(models.Model):
                 dlines[line.account_id] = amt
         label = self.move_label
         lines = []
-        prec_r = self.company_currency_id.rounding
         # for ordering by account code
         for account in aao.search([('company_id', '=', company.id)]):
             if account in dlines:
@@ -375,8 +381,7 @@ class AccountVatProrata(models.Model):
                     'account_id': account.id,
                     'name': label,
                     }
-                amount = float_round(
-                    dlines[account], precision_rounding=prec_r)
+                amount = ccur.round(dlines[account])
                 if float_compare(amount, 0, precision_rounding=prec) > 0:
                     lvals['credit'] = amount
                 else:

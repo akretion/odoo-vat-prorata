@@ -25,6 +25,7 @@ This module has been written by Alexis de Lattre from Akretion
     'data': [
         'security/ir.model.access.csv',
         'security/rule.xml',
+        'data/decimal_precision_data.xml',
         'views/account_account.xml',
         'views/account_config_settings.xml',
         'views/account_vat_prorata.xml',
