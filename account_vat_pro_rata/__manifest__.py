@@ -21,7 +21,7 @@ This module has been written by Alexis de Lattre from Akretion
     """,
     'author': 'Akretion',
     'website': 'http://www.akretion.com',
-    'depends': ['account'],
+    'depends': ['account_invoice_start_end_dates'],
     'data': [
         'security/ir.model.access.csv',
         'security/rule.xml',

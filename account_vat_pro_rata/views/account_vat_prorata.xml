@@ -112,6 +112,39 @@
 
 <menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries" sequence="100"/>
 
+
+<record id="account_vat_prorata_line_form" model="ir.ui.view">
+    <field name="name">account.vat.prorata.line.form</field>
+    <field name="model">account.vat.prorata.line</field>
+    <field name="arch" type="xml">
+        <form>
+            <group name="main">
+                <group name="left">
+                    <field name="parent_id" invisible="not context.get('prorata_line_main_view')"/>
+                    <field name="company_currency_id" invisible="1"/>
+                    <field name="move_id"/>
+                    <field name="date"/>
+                    <field name="partner_id"/>
+                    <field name="account_id"/>
+                    <field name="label"/>
+                    <field name="start_date"/>
+                    <field name="end_date"/>
+                </group>
+                <group name="right">
+                    <field name="original_vat_amount"/>
+                    <field name="prorata_vat_amount"/>
+                    <field name="counterpart_amount"/>
+                    <field name="original_amount"/>
+                    <label for="vat_rate"/>
+                    <div name="vat_rate">
+                        <field name="vat_rate" class="oe_inline"/> %
+                    </div>
+                </group>
+            </group>
+        </form>
+    </field>
+</record>
+
 <record id="account_vat_prorata_line_tree" model="ir.ui.view">
     <field name="name">account.vat.prorata.line.tree</field>
     <field name="model">account.vat.prorata.line</field>
@@ -124,6 +157,8 @@
             <field name="partner_id"/>
             <field name="account_id"/>
             <field name="label"/>
+            <field name="start_date"/>
+            <field name="end_date"/>
             <field name="original_vat_amount"/>
             <field name="prorata_vat_amount" sum="1"/>
             <field name="counterpart_amount" sum="1"/>

@@ -368,30 +368,38 @@ class AccountVatProrata(models.Model):
             else:
                 amt = - line.counterpart_amount
 
-            if line.account_id in dlines:
-                dlines[line.account_id] += amt
-            else:
-                dlines[line.account_id] = amt
+            key = (
+                line.account_id,
+                line.start_date or False,
+                line.end_date or False)
+            dlines.setdefault(key, 0.0)
+            dlines[key] += amt
         label = self.move_label
         lines = []
         # for ordering by account code
-        for account in aao.search([('company_id', '=', company.id)]):
-            if account in dlines:
-                lvals = {
-                    'account_id': account.id,
-                    'name': label,
-                    }
-                amount = ccur.round(dlines[account])
-                if float_compare(amount, 0, precision_rounding=prec) > 0:
-                    lvals['credit'] = amount
-                else:
-                    lvals['debit'] = amount * -1
-                lines.append((0, 0, lvals))
+        for (key, amount) in dlines.items():
+            account, start_date, end_date = key
+            lvals = {
+                'start_date': start_date,
+                'end_date': end_date,
+                'account_id': account.id,
+                'account_code': account.code,  # for sorting
+                'name': label,
+                }
+            amount = ccur.round(amount)
+            if float_compare(amount, 0, precision_rounding=prec) > 0:
+                lvals['credit'] = amount
+            else:
+                lvals['debit'] = amount * -1
+            lines.append(lvals)
+
+        # Order by account code
+        ordered_lines = sorted(lines, key=lambda x: x['account_code'])
         vals = {
             'date': self.date_to,
             'journal_id': self.journal_id.id,
             'ref': label,
-            'line_ids': lines,
+            'line_ids': [x.pop('account_code') and (0, 0, x) for x in ordered_lines],
             'company_id': company.id,
             }
         return vals
@@ -486,3 +494,7 @@ class AccountVatProrataLine(models.Model):
         string="Expense Amount",
         currency_field='company_currency_id')
     vat_rate = fields.Float(string='VAT Rate', digits=(16, 4))
+    start_date = fields.Date(
+        related='line_id.start_date', readonly=True, store=True)
+    end_date = fields.Date(
+        related='line_id.end_date', readonly=True, store=True)
