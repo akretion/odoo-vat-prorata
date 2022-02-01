@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright 2017-2018 Akretion
+  Copyright 2017-2022 Akretion France (http://www.akretion.com/)
   @author: Alexis de Lattre <alexis.delattre@akretion.com>
   License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 -->
@@ -12,7 +12,7 @@
     <field name="name">account.vat.prorata.form</field>
     <field name="model">account.vat.prorata</field>
     <field name="arch" type="xml">
-        <form string="VAT Pro Rata">
+        <form>
             <header>
                 <button name="button_compute_ratio" type="object" string="Compute Ratio" states="draft" class="btn-primary"/>
                 <button name="button_generate_move" type="object" string="Generate Pro Rata Lines and Journal Entry" states="ratio" class="btn-primary"/>
@@ -34,18 +34,16 @@
                 </div>
                 <group name="top">
                     <group name="top-left">
-                        <field name="date_from"/>
-                        <field name="date_to"/>
+                        <field name="date_from" options="{'datepicker': {'warn_future': true}}"/>
+                        <field name="date_to" options="{'datepicker': {'warn_future': true}}"/>
                         <field name="ratio_source_journal_ids" widget="many2many_tags"/>
                         <label for="computed_perct"/>
                         <div>
-                            <field name="computed_perct" class="oe_inline"/>
-                            <label string=" %%" class="oe_inline"/>
+                            <field name="computed_perct" class="oe_inline"/> %
                         </div>
                         <label for="used_perct"/>
                         <div>
-                            <field name="used_perct" class="oe_inline"/>
-                            <label string=" %%" class="oe_inline"/>
+                            <field name="used_perct" class="oe_inline"/> %
                         </div>
 
                     </group>
@@ -71,6 +69,7 @@
             </sheet>
             <div class="oe_chatter">
                 <field name="message_follower_ids" widget="mail_followers"/>
+                <field name="activity_ids" widget="mail_activity"/>
                 <field name="message_ids" widget="mail_thread"/>
             </div>
         </form>
@@ -81,12 +80,32 @@
     <field name="name">account.vat.prorata.tree</field>
     <field name="model">account.vat.prorata</field>
     <field name="arch" type="xml">
-        <tree string="VAT Pro Rata">
-            <field name="date_from"/>
-            <field name="date_to"/>
-            <field name="state"/>
-            <field name="company_id" groups="base.group_multi_company"/>
+        <tree>
+            <field name="date_from" decoration-bf="1"/>
+            <field name="date_to" decoration-bf="1"/>
+            <field name="computed_perct" optional="show"/>
+            <field name="used_perct" optional="show"/>
+            <field name="company_id" groups="base.group_multi_company" optional="show"/>
+            <field name="state" widget="badge" decoration-success="state == 'done'" decoration-info="state == 'draft'" decoration-warning="state == 'ratio'"/>
         </tree>
+    </field>
+</record>
+
+<record id="account_vat_prorata_search" model="ir.ui.view">
+    <field name="name">account.vat.prorata.search</field>
+    <field name="model">account.vat.prorata</field>
+    <field name="arch" type="xml">
+        <search>
+            <field name="date_to"/>
+            <field name="date_from"/>
+            <filter name="draft" string="Draft" domain="[('state', '=', 'draft')]"/>
+            <filter name="done" string="Done" domain="[('state', '=', 'done')]"/>
+            <group string="Group By" name="groupby">
+                <filter name="state_groupby" string="State" context="{'group_by': 'state'}"/>
+                <filter name="date_to_groupby" string="Date To" context="{'group_by': 'date_to'}"/>
+                <filter name="date_from_groupby" string="Date From" context="{'group_by': 'date_from'}"/>
+            </group>
+        </search>
     </field>
 </record>
 
@@ -110,7 +129,7 @@
     <field name="view_mode">tree,form</field>
 </record>
 
-<menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries" sequence="100"/>
+<menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries_accounting_miscellaneous" sequence="100" groups="account.group_account_user,account.group_account_manager"/>
 
 
 <record id="account_vat_prorata_line_form" model="ir.ui.view">
@@ -126,6 +145,7 @@
                     <field name="date"/>
                     <field name="partner_id"/>
                     <field name="account_id"/>
+                    <field name="ref"/>
                     <field name="label"/>
                     <field name="start_date"/>
                     <field name="end_date"/>
@@ -154,16 +174,17 @@
             <field name="company_currency_id" invisible="1"/>
             <field name="move_id"/>
             <field name="date"/>
-            <field name="partner_id"/>
+            <field name="partner_id" optional="show"/>
             <field name="account_id"/>
-            <field name="label"/>
-            <field name="start_date"/>
-            <field name="end_date"/>
-            <field name="original_vat_amount"/>
+            <field name="ref" optional="hide"/>
+            <field name="label" optional="show"/>
+            <field name="start_date" optional="show"/>
+            <field name="end_date" optional="show"/>
+            <field name="original_vat_amount" optional="show"/>
             <field name="prorata_vat_amount" sum="1"/>
             <field name="counterpart_amount" sum="1"/>
-            <field name="original_amount"/>
-            <field name="vat_rate"/>
+            <field name="original_amount" optional="show"/>
+            <field name="vat_rate" optional="show"/>
         </tree>
     </field>
 </record>
@@ -173,6 +194,7 @@
     <field name="model">account.vat.prorata.line</field>
     <field name="arch" type="xml">
         <search>
+            <field name="label" filter_domain="['|', ('label', 'ilike', self), ('ref', 'ilike', self)]" string="Label or Ref"/>
             <field name="move_id"/>
             <field name="date"/>
             <group string="Group By" name="groupby">

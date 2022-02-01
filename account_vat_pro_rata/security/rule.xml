@@ -5,7 +5,7 @@
 <record id="account_vat_prorata_company_rule" model="ir.rule">
     <field name="name">Account VAT Pro Rata Multi-Company</field>
     <field name="model_id" ref="model_account_vat_prorata"/>
-    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'child_of', [user.company_id.id])]</field>
+    <field name="domain_force">[('company_id', 'in', company_ids)]</field>
 </record>
 
 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright 2017-2022 Akretion France
+  @author: Alexis de Lattre <alexis.delattre@akretion.com>
+  License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
+-->
+
+<odoo>
+
+
+<record id="res_config_settings_view_form" model="ir.ui.view">
+    <field name="name">vat.prorata.res.config.settings.form</field>
+    <field name="model">res.config.settings</field>
+    <field name="inherit_id" ref="account.res_config_settings_view_form" />
+    <field name="arch" type="xml">
+        <xpath expr="//div[@id='analytic']" position="after">
+            <h2>VAT Pro Rata</h2>
+            <div class="row mt16 o_settings_container" id="vat_pro_rata">
+                <div class="col-12 col-lg-12 o_setting_box" id="vat_pro_rata-settings">
+                    <div class="o_setting_left_pane">
+                        <field name="vat_prorata" />
+                    </div>
+                    <div class="o_setting_right_pane">
+                        <label for="vat_prorata" class="col-md-5" />
+                    </div>
+                </div>
+                <div class="col-12 col-lg-12 o_setting_box" id="vat_pro_rata-settings-jrl" attrs="{'invisible': [('vat_prorata', '=', False)]}">
+                    <div class="o_setting_left_pane"/>
+                    <div class="o_setting_right_pane">
+                        <label for="vat_prorata_journal_id" class="col-md-5" />
+                        <field name="vat_prorata_journal_id" />
+                    </div>
+                </div>
+            </div>
+        </xpath>
+    </field>
+</record>
+
+
+</odoo>

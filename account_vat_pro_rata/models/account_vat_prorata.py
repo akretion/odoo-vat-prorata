@@ -1,44 +1,41 @@
-# -*- coding: utf-8 -*-
-# Copyright 2017-2018 Akretion
+# Copyright 2017-2022 Akretion (http://www.akretion.com/)
 # @author: Alexis de Lattre <alexis.delattre@akretion.com>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import fields, models, api, _
-from odoo.tools import float_compare, float_is_zero, float_round
-import odoo.addons.decimal_precision as dp
-from odoo.exceptions import UserError
+from odoo.tools import float_is_zero, float_round
+from odoo.exceptions import UserError, ValidationError
 from dateutil.relativedelta import relativedelta
+from odoo.tools.misc import format_date
+from collections import defaultdict
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AccountVatProrata(models.Model):
     _name = 'account.vat.prorata'
     _description = 'VAT Pro Rata calculation'
-    _inherit = ['mail.thread']
+    _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'date_to desc'
+    _check_company_auto = True
 
     @api.model
     def default_get(self, fields_list):
-        res = super(AccountVatProrata, self).default_get(fields_list)
-        today_str = fields.Date.context_today(self)
-        today_dt = fields.Date.from_string(today_str)
+        res = super().default_get(fields_list)
+        today_dt = fields.Date.context_today(self)
         date_from_dt = today_dt + relativedelta(months=-1) +\
             relativedelta(month=1, day=1)
         date_to_dt = today_dt + relativedelta(day=1) + relativedelta(days=-1)
-        company = self.env.user.company_id
-        jl_id = self.env.user.company_id.default_vat_prorata_journal_id.id\
-            or False
+        company = self.env.company
+        jl_id = company.vat_prorata_journal_id.id or False
         source_jrls = self.env['account.journal'].search([
             ('type', '=', 'purchase'), ('company_id', '=', company.id)])
         ratio_source_jrls = self.env['account.journal'].search([
             ('type', '=', 'sale'), ('company_id', '=', company.id)])
-        # For those who use the module account_tax_cash_basis
-        if (
-                hasattr(company, 'tax_cash_basis_journal_id') and
-                company.tax_cash_basis_journal_id):
-            source_jrls |= company.tax_cash_basis_journal_id
         res.update({
-            'date_from': fields.Date.to_string(date_from_dt),
-            'date_to': fields.Date.to_string(date_to_dt),
+            'company_id': company.id,
+            'date_from': date_from_dt,
+            'date_to': date_to_dt,
             'journal_id': jl_id,
             'source_journal_ids': source_jrls.ids,
             'ratio_source_journal_ids': ratio_source_jrls.ids,
@@ -49,11 +46,11 @@ class AccountVatProrata(models.Model):
     date_from = fields.Date(
         string="Date From",
         required=True, readonly=True, states={'draft': [('readonly', False)]},
-        track_visibility='onchange')
+        tracking=True)
     date_to = fields.Date(
         string="Date To",
         required=True, readonly=True, states={'draft': [('readonly', False)]},
-        copy=False, track_visibility='onchange')
+        copy=False, tracking=True)
     ratio_source_journal_ids = fields.Many2many(
         'account.journal',
         'account_vat_prorata_ratio_journal_rel', 'vat_prorata_id',
@@ -65,16 +62,18 @@ class AccountVatProrata(models.Model):
         ('all', 'All Entries')],
         string='Target Moves', required=True, default='all',
         readonly=True, states={'draft': [('readonly', False)]},
-        track_visibility='onchange')
+        tracking=True)
     source_journal_ids = fields.Many2many(
         'account.journal', string='Source Journals', readonly=True,
-        states={'draft': [('readonly', False)]}, required=True)
+        states={'draft': [('readonly', False)]}, required=True,
+        domain="[('company_id', '=', company_id)]")
     journal_id = fields.Many2one(
         'account.journal', string='VAT Pro Rata Journal', required=True,
-        states={'done': [('readonly', True)]})
+        domain="[('company_id', '=', company_id), ('type', '=', 'general')]",
+        states={'done': [('readonly', True)]}, check_company=True)
     move_id = fields.Many2one(
         'account.move', string='VAT Pro Rata Entry', readonly=True,
-        copy=False)
+        copy=False, check_company=True)
     move_label = fields.Char(
         string='Label of the VAT Pro Rata Entry', required=True,
         states={'done': [('readonly', True)]},
@@ -94,26 +93,21 @@ class AccountVatProrata(models.Model):
         string='No VAT Subject Accounts', readonly=True)
     computed_perct = fields.Float(
         string='VAT Subject Computed Ratio', readonly=True,
-        digits=dp.get_precision('VAT Pro Rata Ratio'),
-        track_visibility='onchange')
+        digits='VAT Pro Rata Ratio', tracking=True)
     used_perct = fields.Float(
         string='VAT Subject Used Ratio', states={'done': [('readonly', True)]},
-        digits=dp.get_precision('VAT Pro Rata Ratio'),
-        track_visibility='onchange')
+        digits='VAT Pro Rata Ratio', tracking=True)
     company_id = fields.Many2one(
         'res.company', string='Company', required=True,
-        states={'done': [('readonly', True)]},
-        default=lambda self: self.env['res.company']._company_default_get(
-            'account.vat.prorata'))
+        states={'done': [('readonly', True)]})
     company_currency_id = fields.Many2one(
-        related='company_id.currency_id', readonly=True, store=True,
-        string='Company Currency')
+        related='company_id.currency_id', store=True, string='Company Currency')
     state = fields.Selection([
         ('draft', 'Draft'),
         ('ratio', 'Ratio'),
         ('done', 'Done'),
         ], string='State', index=True, readonly=True,
-        track_visibility='onchange', default='draft', copy=False)
+        tracking=True, default='draft', copy=False)
 
     _sql_constraints = [(
         'date_company_uniq',
@@ -121,15 +115,25 @@ class AccountVatProrata(models.Model):
         'A pro rata VAT already exists in this company for the same dates!'
         )]
 
+    @api.constrains('date_from', 'date_to')
+    def _check_vat_prorata(self):
+        for rec in self:
+            if rec.date_from and rec.date_to and rec.date_from >= rec.date_to:
+                raise ValidationError(_(
+                    "Date To ({date_to}) must be after Date From ({date_from})."
+                    ).format(
+                        date_to=format_date(self.env, rec.date_to),
+                        date_from=format_date(self.env, rec.date_from)))
+
     def button_back2draft(self):
         self.ensure_one()
         self.write({'state': 'draft'})
         self.delete_all_lines()
         if self.move_id:
             self.move_id.unlink()
-        return True
 
     def delete_all_lines(self):
+        self.ensure_one()
         avplo = self.env['account.vat.prorata.line']
         avpslo = self.env['account.vat.prorata.subject.line']
         lines = avplo.search([('parent_id', '=', self.id)])
@@ -142,8 +146,12 @@ class AccountVatProrata(models.Model):
     def button_compute_ratio(self):
         self.ensure_one()
         avpslo = self.env['account.vat.prorata.subject.line']
+        if not self.company_id.vat_prorata:
+            raise UserError(_(
+                "Company '%s' doesn't have VAT Prorata.")
+                % self.company_id.display_name)
         self.delete_all_lines()
-        prec = self.company_id.currency_id.rounding
+        ccur = self.company_id.currency_id
         target_move_sql = ' '
         if self.target_move == 'posted':
             target_move_sql = " AND am.state = 'posted' "
@@ -153,12 +161,12 @@ class AccountVatProrata(models.Model):
                 aa.vat_subject AS vat_subject,
                 SUM(aml.debit) AS debit,
                 SUM(aml.credit) AS credit,
-                (SUM(aml.debit) - SUM(aml.credit)) AS balance
+                SUM(aml.balance) AS balance
                 FROM account_move_line aml
                 LEFT JOIN account_move am ON aml.move_id = am.id
                 LEFT JOIN account_account aa ON aa.id = aml.account_id
                 WHERE aa.vat_subject in ('vat_subject', 'no_vat_subject')
-                AND aml.company_id = %s
+                AND am.company_id = %s
                 AND am.date >= %s
                 AND am.date <= %s
                 AND am.journal_id in %s
@@ -175,9 +183,7 @@ class AccountVatProrata(models.Model):
         vat_subject_total = 0.0
         for row in self._cr.dictfetchall():
             # print "row=", row
-            if (
-                    float_is_zero(row['credit'], precision_rounding=prec) and
-                    float_is_zero(row['debit'], precision_rounding=prec)):
+            if ccur.is_zero(row['credit']) and ccur.is_zero(row['debit']):
                 continue
             total += row['balance']
             if row['vat_subject'] == 'vat_subject':
@@ -205,7 +211,42 @@ class AccountVatProrata(models.Model):
             'used_perct': perct,
             })
 
-        return True
+    def _get_vat_deduc_accounts(self):
+        vat_deduc_accounts = self.env['account.account']
+        deduc_vat_taxes = self.env['account.tax'].search([
+            ('company_id', '=', self.company_id.id),
+            ("amount_type", "=", "percent"),
+            ("amount", ">", 0),
+            ("type_tax_use", "=", "purchase"),
+            ("fr_vat_autoliquidation", "=", False),
+            ])
+        for tax in deduc_vat_taxes:
+            line = tax.invoice_repartition_line_ids.filtered(
+                lambda x: x.repartition_type == "tax"
+                and x.account_id
+                and int(x.factor_percent) == 100
+            )
+            if len(line) != 1:
+                raise UserError(
+                    _("Bad configuration on regular purchase tax %s.")
+                    % tax.display_name
+                )
+            vat_account = line.account_id
+            vat_account_code = vat_account.code
+            if (
+                    not vat_account_code.startswith('44562') and
+                    not vat_account_code.startswith('44566')):
+                raise UserError(_(
+                    "Tax {tax} has been considered as a deductible VAT tax, "
+                    "but it's not true because it's account code is "
+                    "'{account_code}'.").format(
+                        tax=tax.display_name,
+                        account_code=vat_account_code))
+            vat_deduc_accounts |= vat_account
+        if not vat_deduc_accounts:
+            raise UserError(_('No accounts are configured as VAT deductible'))
+        logger.debug('vat_deduc_accounts=%s', [acc.code for acc in vat_deduc_accounts])
+        return vat_deduc_accounts
 
     def generate_prorata_lines(self):
         avplo = self.env['account.vat.prorata.line']
@@ -219,9 +260,8 @@ class AccountVatProrata(models.Model):
             lines.unlink()
         # Prepare datas
         ccur = company.currency_id
-        ccur_prec = company.currency_id.rounding
-        vat_deduc_accounts = aao.search([
-            ('vat_deductible', '=', True), ('company_id', '=', company.id)])
+
+        vat_deduc_accounts = self._get_vat_deduc_accounts()
         speed_acc2type = {}  # key = account_id, value = internal type
         accounts = aao.search_read(
             [('company_id', '=', company.id)], ['internal_type'])
@@ -232,12 +272,10 @@ class AccountVatProrata(models.Model):
             ('company_id', '=', company.id),
             ('type_tax_use', '=', 'purchase'),
             ('amount_type', '=', 'percent'),
-            ('amount', '!=', False)])
+            ('amount', '>', 0)])
         for vattax in vattaxes:
             if not float_is_zero(vattax.amount, precision_digits=4):
                 speed_vattax2rate[vattax.id] = vattax.amount
-        if not vat_deduc_accounts:
-            raise UserError(_('No accounts are configured as VAT deductible'))
         ratio = (100.0 - self.used_perct) / 100.0
         # Get moves
         domain = [
@@ -245,6 +283,7 @@ class AccountVatProrata(models.Model):
             ('date', '>=', self.date_from),
             ('date', '<=', self.date_to),
             ('company_id', '=', company.id),
+            ('fiscal_position_fr_vat_type', 'in', ('france', False)),
             ]
         if self.target_move == 'posted':
             domain.append(('state', '=', 'posted'))
@@ -254,7 +293,7 @@ class AccountVatProrata(models.Model):
             tmp = {
                 'vat': {},
                 # key = line ID
-                # value = {'bal': balance, 'prorata': balance * rate}
+                # value = {'bal': balance, 'prorata': balance * ratio}
                 'other_tax': {},
                 # key = line ID
                 # value = {'bal': balance, 'vat_rate': 5.5, 'weight': weight}
@@ -264,8 +303,10 @@ class AccountVatProrata(models.Model):
                 'total_vat': 0.0,
                 'total_weight_other_tax': 0.0,
                 'total_weight_other_notax': 0.0}
+            # in v14, 'other_notax' is almost not used because we always encode
+            # a purchase moves via invoice lines in common scenarios
             for line in move.line_ids:
-                if float_is_zero(line.balance, precision_rounding=ccur_prec):
+                if ccur.is_zero(line.balance):
                     continue
                 # VAT line
                 if line.account_id in vat_deduc_accounts:
@@ -302,26 +343,25 @@ class AccountVatProrata(models.Model):
                     "journal than source journals ?"
                     " (debug: %s)") % (move.display_name, tmp))
             if tmp['vat']:
+                from pprint import pprint
+                print('move=', move.name)
+                pprint(tmp)
                 work_moves.append(tmp)
         # Create lines
         for work_move in work_moves:
             if (
                     work_move['other_tax'] and
-                    not float_is_zero(
-                        work_move['total_weight_other_tax'],
-                        precision_rounding=ccur_prec)):
+                    not ccur.is_zero(work_move['total_weight_other_tax'])):
                 self.expense_prorata_line_create(work_move, 'other_tax', ccur)
             elif (
                     work_move['other_notax'] and
-                    not float_is_zero(
-                        work_move['total_weight_other_notax'],
-                        precision_rounding=ccur_prec)):
+                    not ccur.is_zero(work_move['total_weight_other_notax'])):
                 self.expense_prorata_line_create(
                     work_move, 'other_notax', ccur)
             else:
                 raise UserError(_(
                     'This scenario is not supported (debug: %s)') % work_move)
-            for line_id, ldict in work_move['vat'].iteritems():
+            for line_id, ldict in work_move['vat'].items():
                 avplo.create({
                     'parent_id': self.id,
                     'line_id': line_id,
@@ -334,7 +374,7 @@ class AccountVatProrata(models.Model):
         avplo = self.env['account.vat.prorata.line']
         i = len(work_move[acc_type])
         vat_left = work_move['total_vat']  # already rounded
-        for line_id, ldict in work_move[acc_type].iteritems():
+        for line_id, ldict in work_move[acc_type].items():
             if i == 1:
                 amt = ccur.round(vat_left)  # rounding "optional" here
             else:
@@ -353,28 +393,24 @@ class AccountVatProrata(models.Model):
 
     def prepare_move(self):
         self.ensure_one()
-        aao = self.env['account.account']
         company = self.company_id
         ccur = company.currency_id
-        prec = ccur.rounding
-        vat_deduc_accounts = aao.search([
-            ('vat_deductible', '=', True), ('company_id', '=', company.id)])
         if not self.line_ids:
             raise UserError(_('There are no lines'))
-        dlines = {}
+        dlines = defaultdict(float)
         for line in self.line_ids:
-            if line.account_id in vat_deduc_accounts:
+            if not ccur.is_zero(line.prorata_vat_amount):
                 amt = line.prorata_vat_amount
-            else:
+            elif not ccur.is_zero(line.counterpart_amount):
                 amt = - line.counterpart_amount
+            else:
+                continue
 
             key = (
                 line.account_id,
                 line.start_date or False,
                 line.end_date or False)
-            dlines.setdefault(key, 0.0)
             dlines[key] += amt
-        label = self.move_label
         lines = []
         # for ordering by account code
         for (key, amount) in dlines.items():
@@ -384,10 +420,9 @@ class AccountVatProrata(models.Model):
                 'end_date': end_date,
                 'account_id': account.id,
                 'account_code': account.code,  # for sorting
-                'name': label,
                 }
             amount = ccur.round(amount)
-            if float_compare(amount, 0, precision_rounding=prec) > 0:
+            if ccur.compare_amounts(amount, 0) > 0:
                 lvals['credit'] = amount
             else:
                 lvals['debit'] = amount * -1
@@ -398,7 +433,7 @@ class AccountVatProrata(models.Model):
         vals = {
             'date': self.date_to,
             'journal_id': self.journal_id.id,
-            'ref': label,
+            'ref': self.move_label,
             'line_ids': [x.pop('account_code') and (0, 0, x) for x in ordered_lines],
             'company_id': company.id,
             }
@@ -412,15 +447,16 @@ class AccountVatProrata(models.Model):
             'state': 'done',
             'move_id': move.id,
             })
-        action = self.env['ir.actions.act_window'].for_xml_id(
-            'account', 'action_move_journal_line')
-        action.update({
-            'view_mode': 'form,tree',
-            'res_id': move.id,
-            'view_id': False,
-            'views': False,
-            })
-        return action
+        # I think it's better to stay on the VAT prorata form view
+#        action = self.env['ir.actions.actions']._for_xml_id(
+#            'account.action_move_journal_line')
+#        action.update({
+#            'view_mode': 'form,tree',
+#            'res_id': move.id,
+#            'view_id': False,
+#            'views': False,
+#            })
+#        return action
 
     def name_get(self):
         res = []
@@ -430,8 +466,8 @@ class AccountVatProrata(models.Model):
         return res
 
     def button_prorata_line_tree(self):
-        action = self.env['ir.actions.act_window'].for_xml_id(
-            'account_vat_pro_rata', 'account_vat_prorata_line_action')
+        action = self.env['ir.actions.actions']._for_xml_id(
+            'account_vat_pro_rata.account_vat_prorata_line_action')
         action.update({
             'domain': [('parent_id', '=', self.id)],
             'views': False,
@@ -447,7 +483,7 @@ class AccountVatProrataSubjectLine(models.Model):
         'account.vat.prorata', string='VAT Pro Rata', ondelete='cascade')
     company_currency_id = fields.Many2one(
         related='parent_id.company_currency_id',
-        string="Company Currency", readonly=True)
+        string="Company Currency")
     account_id = fields.Many2one(
         'account.account', string='Income Account', required=True)
     # vat_subject is NOT a related field because I need history
@@ -465,23 +501,22 @@ class AccountVatProrataLine(models.Model):
     _name = 'account.vat.prorata.line'
     _description = 'VAT Pro Rata calculation line'
 
-    # TODO: maybe it's not a good idea to put related field
     parent_id = fields.Many2one(
         'account.vat.prorata', string='VAT Pro Rata', ondelete='cascade')
     company_currency_id = fields.Many2one(
-        related='parent_id.company_currency_id',
-        string="Company Currency", readonly=True)
+        related='parent_id.company_currency_id', string="Company Currency")
     line_id = fields.Many2one(
         'account.move.line', string='Journal Items', readonly=True)
-    date = fields.Date(related='line_id.date', readonly=True, store=True)
+    date = fields.Date(related='line_id.date', store=True)
     move_id = fields.Many2one(
-        related='line_id.move_id', readonly=True, store=True)
+        related='line_id.move_id', store=True)
     account_id = fields.Many2one(
-        related='line_id.account_id', readonly=True, store=True)
+        related='line_id.account_id', store=True)
     partner_id = fields.Many2one(
-        related='line_id.partner_id', readonly=True, store=True)
+        related='line_id.partner_id', store=True)
+    ref = fields.Char(related='line_id.ref', store=True)
     label = fields.Char(
-        related='line_id.name', readonly=True, store=True)
+        related='line_id.name', store=True)
     original_vat_amount = fields.Monetary(
         string="VAT Amount", currency_field='company_currency_id')
     prorata_vat_amount = fields.Monetary(
@@ -495,6 +530,6 @@ class AccountVatProrataLine(models.Model):
         currency_field='company_currency_id')
     vat_rate = fields.Float(string='VAT Rate', digits=(16, 4))
     start_date = fields.Date(
-        related='line_id.start_date', readonly=True, store=True)
+        related='line_id.start_date', store=True)
     end_date = fields.Date(
-        related='line_id.end_date', readonly=True, store=True)
+        related='line_id.end_date', store=True)

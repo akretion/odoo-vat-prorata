@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+  Copyright 2017-2022 Akretion France (http://www.akretion.com/)
+  @author: Alexis de Lattre <alexis.delattre@akretion.com>
   License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 -->
 
@@ -12,12 +13,22 @@
     <field name="model">account.account</field>
     <field name="inherit_id" ref="account.view_account_form"/>
     <field name="arch" type="xml">
-        <xpath expr="//div[@class='row']/.." position="after">
+        <group name="options_group" position="after">
             <group name="vat_prorata" string="VAT Pro Rata">
                 <field name="vat_subject" attrs="{'invisible': [('internal_type', '!=', 'other')]}"/>
-                <field name="vat_deductible" attrs="{'invisible': [('internal_type', '!=', 'other')]}"/>
             </group>
-        </xpath>
+        </group>
+    </field>
+</record>
+
+<record id="view_account_list" model="ir.ui.view">
+    <field name="name">vat.prorata.account.account.tree</field>
+    <field name="model">account.account</field>
+    <field name="inherit_id" ref="account.view_account_list"/>
+    <field name="arch" type="xml">
+        <field name="tag_ids" position="after">
+            <field name="vat_subject" attrs="{'invisible': [('internal_type', '!=', 'other')]}" optional="hide"/>
+        </field>
     </field>
 </record>
 
@@ -26,9 +37,10 @@
     <field name="model">account.account</field>
     <field name="inherit_id" ref="account.view_account_search"/>
     <field name="arch" type="xml">
-        <filter domain="[('internal_type','=','payable')]" position="after">
+        <filter name="activeacc" position="after">
             <separator/>
-            <filter name="vat_subject" string="VAT Subject" domain="[('vat_subject', '=', True)]"/>
+            <filter name="vat_subject" string="VAT Subject" domain="[('vat_subject', '=', 'vat_subject')]"/>
+            <filter name="no_vat_subject" string="No VAT Subject" domain="[('vat_subject', '=', 'no_vat_subject')]"/>
         </filter>
     </field>
 </record>

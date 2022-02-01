@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
-# © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+# Copyright 2017-2022 Akretion France
+# @author: Alexis de Lattre <alexis.delattre@akretion.com>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
 {
     'name': 'VAT Pro Rata',
-    'version': '10.0.1.0.0',
+    'version': '14.0.1.0.0',
     'category': 'Accounting & Finance',
     'license': 'AGPL-3',
     'summary': 'Manages VAT Pro Rata',
@@ -20,14 +20,14 @@ This module has been written by Alexis de Lattre from Akretion
 <alexis.delattre@akretion.com>.
     """,
     'author': 'Akretion',
-    'website': 'http://www.akretion.com',
-    'depends': ['account_invoice_start_end_dates'],
+    'website': 'https://github.com/akretion/odoo-vat-prorata',
+    'depends': ['account_invoice_start_end_dates', 'l10n_fr_account_vat_return'],
     'data': [
         'security/ir.model.access.csv',
         'security/rule.xml',
         'data/decimal_precision_data.xml',
         'views/account_account.xml',
-        'views/account_config_settings.xml',
+        'views/res_config_settings.xml',
         'views/account_vat_prorata.xml',
     ],
     'installable': True,

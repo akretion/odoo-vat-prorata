@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-# © 2017 Akretion (Alexis de Lattre <alexis.delattre@akretion.com>)
+# Copyright 2017-2022 Akretion France (http://www.akretion.com/)
+# @author: Alexis de Lattre <alexis.delattre@akretion.com>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import fields, models
@@ -19,6 +19,3 @@ class AccountAccount(models.Model):
         "(including revenue accounts used for the activity suject to VAT "
         "which is excluded from VAT because the fiscal position is Export or "
         "Intra-EU B2B)")
-    vat_deductible = fields.Boolean(
-        string='Deductible VAT Account',
-        help="This field is used for the computation of VAT Pro Rata")
