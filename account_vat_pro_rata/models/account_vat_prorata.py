@@ -412,6 +412,12 @@ class AccountVatProrata(models.Model):
                 line.end_date or False)
             dlines[key] += amt
         lines = []
+        # Needed to neutralise default asset profile that may be
+        # configured on asset account and that will block
+        # account move posting
+        asset_installed = False
+        if hasattr(self.env['account.account'], 'asset_profile_id'):
+            asset_installed = True
         # for ordering by account code
         for (key, amount) in dlines.items():
             account, start_date, end_date = key
@@ -421,6 +427,8 @@ class AccountVatProrata(models.Model):
                 'account_id': account.id,
                 'account_code': account.code,  # for sorting
                 }
+            if asset_installed:
+                lvals['asset_profile_id'] = False
             amount = ccur.round(amount)
             if ccur.compare_amounts(amount, 0) > 0:
                 lvals['credit'] = amount
