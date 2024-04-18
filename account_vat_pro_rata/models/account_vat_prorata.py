@@ -152,9 +152,11 @@ class AccountVatProrata(models.Model):
                 % self.company_id.display_name)
         self.delete_all_lines()
         ccur = self.company_id.currency_id
-        target_move_sql = ' '
         if self.target_move == 'posted':
             target_move_sql = " AND am.state = 'posted' "
+        else:
+            target_move_sql = " AND am.state in ('draft', 'posted') "
+
         request = """
             SELECT
                 aml.account_id AS account_id,
@@ -182,7 +184,6 @@ class AccountVatProrata(models.Model):
         total = 0.0
         vat_subject_total = 0.0
         for row in self._cr.dictfetchall():
-            # print "row=", row
             if ccur.is_zero(row['credit']) and ccur.is_zero(row['debit']):
                 continue
             total += row['balance']
@@ -283,10 +284,12 @@ class AccountVatProrata(models.Model):
             ('date', '>=', self.date_from),
             ('date', '<=', self.date_to),
             ('company_id', '=', company.id),
-            ('fiscal_position_fr_vat_type', 'in', ('france', False)),
+            ('fiscal_position_fr_vat_type', 'in', ('france', 'france_vendor_vat_on_payment', False)),
             ]
         if self.target_move == 'posted':
             domain.append(('state', '=', 'posted'))
+        else:
+            domain.append(('state', 'in', ('draft', 'posted')))
         moves = amo.search(domain)
         work_moves = []
         for move in moves:
@@ -343,9 +346,6 @@ class AccountVatProrata(models.Model):
                     "journal than source journals ?"
                     " (debug: %s)") % (move.display_name, tmp))
             if tmp['vat']:
-                from pprint import pprint
-                print('move=', move.name)
-                pprint(tmp)
                 work_moves.append(tmp)
         # Create lines
         for work_move in work_moves:
