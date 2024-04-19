@@ -284,7 +284,12 @@ class AccountVatProrata(models.Model):
             ('date', '>=', self.date_from),
             ('date', '<=', self.date_to),
             ('company_id', '=', company.id),
-            ('fiscal_position_fr_vat_type', 'in', ('france', 'france_vendor_vat_on_payment', False)),
+            # I decided NOT to filter on 'fiscal_position_fr_vat_type' even if it can improve
+            # a little bit the perfs, because it is technically possible to have
+            # French VAT taxes on invoice line with a fiscal position not in
+            # france/france_vendor_vat_on_payment/False if the user has manually
+            # set the taxes on the invoice line.
+            # ('fiscal_position_fr_vat_type', 'in', ('france', 'france_vendor_vat_on_payment', False)),
             ]
         if self.target_move == 'posted':
             domain.append(('state', '=', 'posted'))
