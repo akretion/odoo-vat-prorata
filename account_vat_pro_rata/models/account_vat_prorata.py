@@ -460,21 +460,11 @@ class AccountVatProrata(models.Model):
             'state': 'done',
             'move_id': move.id,
             })
-        # I think it's better to stay on the VAT prorata form view
-#        action = self.env['ir.actions.actions']._for_xml_id(
-#            'account.action_move_journal_line')
-#        action.update({
-#            'view_mode': 'form,tree',
-#            'res_id': move.id,
-#            'view_id': False,
-#            'views': False,
-#            })
-#        return action
 
     def name_get(self):
         res = []
         for rec in self:
-            name = _('VAT Pro Rata %s -> %s') % (rec.date_from, rec.date_to)
+            name = _('VAT Pro Rata %s -> %s') % (format_date(self.env, rec.date_from), format_date(self.env, rec.date_to))
             res.append((rec.id, name))
         return res
 
