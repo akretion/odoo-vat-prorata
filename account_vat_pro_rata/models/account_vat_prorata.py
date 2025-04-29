@@ -219,7 +219,6 @@ class AccountVatProrata(models.Model):
             ("amount_type", "=", "percent"),
             ("amount", ">", 0),
             ("type_tax_use", "=", "purchase"),
-            ("fr_vat_autoliquidation", "=", False),
             ])
         for tax in deduc_vat_taxes:
             line = tax.invoice_repartition_line_ids.filtered(
