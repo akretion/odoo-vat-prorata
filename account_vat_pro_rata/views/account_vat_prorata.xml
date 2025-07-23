@@ -36,7 +36,6 @@
                     <group name="top-left">
                         <field name="date_from" options="{'datepicker': {'warn_future': true}}"/>
                         <field name="date_to" options="{'datepicker': {'warn_future': true}}"/>
-                        <field name="ratio_source_journal_ids" widget="many2many_tags"/>
                         <label for="computed_perct"/>
                         <div>
                             <field name="computed_perct" class="oe_inline"/> %

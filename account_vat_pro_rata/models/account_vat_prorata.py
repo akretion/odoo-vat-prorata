@@ -30,15 +30,12 @@ class AccountVatProrata(models.Model):
         jl_id = company.vat_prorata_journal_id.id or False
         source_jrls = self.env['account.journal'].search([
             ('type', '=', 'purchase'), ('company_id', '=', company.id)])
-        ratio_source_jrls = self.env['account.journal'].search([
-            ('type', '=', 'sale'), ('company_id', '=', company.id)])
         res.update({
             'company_id': company.id,
             'date_from': date_from_dt,
             'date_to': date_to_dt,
             'journal_id': jl_id,
             'source_journal_ids': source_jrls.ids,
-            'ratio_source_journal_ids': ratio_source_jrls.ids,
             'move_label': _('VAT Pro Rata'),
         })
         return res
@@ -51,12 +48,6 @@ class AccountVatProrata(models.Model):
         string="Date To",
         required=True, readonly=True, states={'draft': [('readonly', False)]},
         copy=False, tracking=True)
-    ratio_source_journal_ids = fields.Many2many(
-        'account.journal',
-        'account_vat_prorata_ratio_journal_rel', 'vat_prorata_id',
-        'journal_id', string='Compute Ratio Source Journals',
-        readonly=True, states={'draft': [('readonly', False)]},
-        required=True)
     target_move = fields.Selection([
         ('posted', 'All Posted Entries'),
         ('all', 'All Entries')],
@@ -171,7 +162,6 @@ class AccountVatProrata(models.Model):
                 AND am.company_id = %s
                 AND am.date >= %s
                 AND am.date <= %s
-                AND am.journal_id in %s
             """ + target_move_sql + \
             """
                 GROUP BY aml.account_id, aa.code, aa.vat_subject
@@ -179,8 +169,8 @@ class AccountVatProrata(models.Model):
             """
         self._cr.execute(
             request,
-            (self.company_id.id, self.date_from, self.date_to,
-             tuple(self.ratio_source_journal_ids.ids)))
+            (self.company_id.id, self.date_from, self.date_to)
+            )
         total = 0.0
         vat_subject_total = 0.0
         for row in self._cr.dictfetchall():
