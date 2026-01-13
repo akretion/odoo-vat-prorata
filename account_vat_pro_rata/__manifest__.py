@@ -4,7 +4,7 @@
 
 {
     'name': 'VAT Pro Rata',
-    'version': '14.0.1.0.0',
+    'version': '18.0.1.0.0',
     'category': 'Accounting & Finance',
     'license': 'AGPL-3',
     'summary': 'Manages VAT Pro Rata',

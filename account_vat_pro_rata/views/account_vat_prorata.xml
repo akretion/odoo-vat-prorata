@@ -14,9 +14,9 @@
     <field name="arch" type="xml">
         <form>
             <header>
-                <button name="button_compute_ratio" type="object" string="Compute Ratio" states="draft" class="btn-primary"/>
-                <button name="button_generate_move" type="object" string="Generate Pro Rata Lines and Journal Entry" states="ratio" class="btn-primary"/>
-                <button name="button_back2draft" type="object" string="Back to Draft" states="ratio,done"/>
+                <button name="button_compute_ratio" type="object" string="Compute Ratio" invisible="state != 'draft'" class="btn-primary"/>
+                <button name="button_generate_move" type="object" string="Generate Pro Rata Lines and Journal Entry" invisible="state != 'ratio'" class="btn-primary"/>
+                <button name="button_back2draft" type="object" string="Back to Draft" invisible="state not in ('ratio', 'done')"/>
                 <field name="state" widget="statusbar"/>
             </header>
             <sheet>
@@ -26,7 +26,7 @@
                         icon="fa-building-o"
                         type="object"
                         help="List view of lines"
-                        states="done">
+                        invisible="state != 'done'">
                         <div class="o_form_field o_stat_info">
                             <span class="o_stat_text">Lines Fullscreen</span>
                         </div>
@@ -34,26 +34,26 @@
                 </div>
                 <group name="top">
                     <group name="top-left">
-                        <field name="date_from" options="{'datepicker': {'warn_future': true}}"/>
-                        <field name="date_to" options="{'datepicker': {'warn_future': true}}"/>
+                        <field name="date_from" options="{'datepicker': {'warn_future': true}}" readonly="state != 'draft'"/>
+                        <field name="date_to" options="{'datepicker': {'warn_future': true}}" readonly="state != 'draft'"/>
                         <label for="computed_perct"/>
                         <div>
                             <field name="computed_perct" class="oe_inline"/> %
                         </div>
                         <label for="used_perct"/>
                         <div>
-                            <field name="used_perct" class="oe_inline"/> %
+                            <field name="used_perct" class="oe_inline" readonly="state == 'done'"/> %
                         </div>
 
                     </group>
                     <group name="top-right">
-                        <field name="target_move" widget="radio"/>
-                        <field name="source_journal_ids" widget="many2many_tags"/>
+                        <field name="target_move" widget="radio" readonly="state != 'draft'"/>
+                        <field name="source_journal_ids" widget="many2many_tags" readonly="state != 'draft'"/>
                         <field name="company_currency_id" invisible="1"/>
-                        <field name="move_label"/>
-                        <field name="journal_id"/>
+                        <field name="move_label" readonly="state == 'done'"/>
+                        <field name="journal_id" readonly="state == 'done'"/>
                         <field name="move_id"/>
-                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="company_id" groups="base.group_multi_company" readonly="state == 'done'"/>
                     </group>
                     <group name="subject_lines" string="VAT Subject">
                         <field name="subject_line_ids" nolabel="1"/>
@@ -66,27 +66,23 @@
                     <field name="line_ids" nolabel="1"/>
                 </group>
             </sheet>
-            <div class="oe_chatter">
-                <field name="message_follower_ids" widget="mail_followers"/>
-                <field name="activity_ids" widget="mail_activity"/>
-                <field name="message_ids" widget="mail_thread"/>
-            </div>
+            <chatter/>
         </form>
     </field>
 </record>
 
 <record id="account_vat_prorata_tree" model="ir.ui.view">
-    <field name="name">account.vat.prorata.tree</field>
+    <field name="name">account.vat.prorata.list</field>
     <field name="model">account.vat.prorata</field>
     <field name="arch" type="xml">
-        <tree>
+        <list>
             <field name="date_from" decoration-bf="1"/>
             <field name="date_to" decoration-bf="1"/>
             <field name="computed_perct" optional="show"/>
             <field name="used_perct" optional="show"/>
             <field name="company_id" groups="base.group_multi_company" optional="show"/>
             <field name="state" widget="badge" decoration-success="state == 'done'" decoration-info="state == 'draft'" decoration-warning="state == 'ratio'"/>
-        </tree>
+        </list>
     </field>
 </record>
 
@@ -109,26 +105,26 @@
 </record>
 
 <record id="account_vat_prorata_subject_line_tree" model="ir.ui.view">
-    <field name="name">account.vat.prorata.subject.line.tree</field>
+    <field name="name">account.vat.prorata.subject.line.list</field>
     <field name="model">account.vat.prorata.subject.line</field>
     <field name="arch" type="xml">
-        <tree>
+        <list>
             <field name="account_id"/>
             <field name="debit" sum="1"/>
             <field name="credit" sum="1"/>
             <field name="balance" sum="1"/>
             <field name="company_currency_id" invisible="1"/>
-        </tree>
+        </list>
     </field>
 </record>
 
 <record id="account_vat_prorata_action" model="ir.actions.act_window">
     <field name="name">VAT Pro Rata</field>
     <field name="res_model">account.vat.prorata</field>
-    <field name="view_mode">tree,form</field>
+    <field name="view_mode">list,form</field>
 </record>
 
-<menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries_accounting_miscellaneous" sequence="100" groups="account.group_account_user,account.group_account_manager"/>
+<menuitem id="account_vat_prorata_menu" action="account_vat_prorata_action" parent="account.menu_finance_entries" sequence="35" groups="account.group_account_user,account.group_account_manager"/>
 
 
 <record id="account_vat_prorata_line_form" model="ir.ui.view">
@@ -138,7 +134,7 @@
         <form>
             <group name="main">
                 <group name="left">
-                    <field name="parent_id" invisible="not context.get('prorata_line_main_view')"/>
+                    <field name="parent_id" column_invisible="not context.get('prorata_line_main_view')"/>
                     <field name="company_currency_id" invisible="1"/>
                     <field name="move_id"/>
                     <field name="date"/>
@@ -165,12 +161,12 @@
 </record>
 
 <record id="account_vat_prorata_line_tree" model="ir.ui.view">
-    <field name="name">account.vat.prorata.line.tree</field>
+    <field name="name">account.vat.prorata.line.list</field>
     <field name="model">account.vat.prorata.line</field>
     <field name="arch" type="xml">
-        <tree>
-            <field name="parent_id" invisible="not context.get('prorata_line_main_view')"/>
-            <field name="company_currency_id" invisible="1"/>
+        <list>
+            <field name="parent_id" column_invisible="not context.get('prorata_line_main_view')"/>
+            <field name="company_currency_id" column_invisible="1"/>
             <field name="move_id"/>
             <field name="date"/>
             <field name="partner_id" optional="show"/>
@@ -184,7 +180,7 @@
             <field name="counterpart_amount" sum="1"/>
             <field name="original_amount" optional="show"/>
             <field name="vat_rate" optional="show"/>
-        </tree>
+        </list>
     </field>
 </record>
 
@@ -207,7 +203,7 @@
 <record id="account_vat_prorata_line_action" model="ir.actions.act_window">
     <field name="name">VAT Pro Rata Lines</field>
     <field name="res_model">account.vat.prorata.line</field>
-    <field name="view_mode">tree,form</field>
+    <field name="view_mode">list,form</field>
     <field name="limit">500</field>
 </record>
 

@@ -13,21 +13,19 @@
     <field name="model">account.account</field>
     <field name="inherit_id" ref="account.view_account_form"/>
     <field name="arch" type="xml">
-        <group name="options_group" position="after">
-            <group name="vat_prorata" string="VAT Pro Rata">
-                <field name="vat_subject" attrs="{'invisible': [('internal_type', '!=', 'other')]}"/>
-            </group>
-        </group>
+        <field name="allowed_journal_ids" position="after">
+            <field name="vat_subject" invisible="account_type not in ('income', 'income_other')"/>
+        </field>
     </field>
 </record>
 
 <record id="view_account_list" model="ir.ui.view">
-    <field name="name">vat.prorata.account.account.tree</field>
+    <field name="name">vat.prorata.account.account.list</field>
     <field name="model">account.account</field>
     <field name="inherit_id" ref="account.view_account_list"/>
     <field name="arch" type="xml">
         <field name="tag_ids" position="after">
-            <field name="vat_subject" attrs="{'invisible': [('internal_type', '!=', 'other')]}" optional="hide"/>
+            <field name="vat_subject" invisible="account_type not in ('income', 'income_other')" optional="hide"/>
         </field>
     </field>
 </record>

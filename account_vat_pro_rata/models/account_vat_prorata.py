@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import fields, models, api, _
+from odoo.fields import Command
 from odoo.tools import float_is_zero, float_round
 from odoo.exceptions import UserError, ValidationError
 from dateutil.relativedelta import relativedelta
@@ -35,39 +36,36 @@ class AccountVatProrata(models.Model):
             'date_from': date_from_dt,
             'date_to': date_to_dt,
             'journal_id': jl_id,
-            'source_journal_ids': source_jrls.ids,
+            'source_journal_ids': [Command.set(source_jrls.ids)],
             'move_label': _('VAT Pro Rata'),
         })
         return res
 
     date_from = fields.Date(
         string="Date From",
-        required=True, readonly=True, states={'draft': [('readonly', False)]},
+        required=True,
         tracking=True)
     date_to = fields.Date(
         string="Date To",
-        required=True, readonly=True, states={'draft': [('readonly', False)]},
+        required=True,
         copy=False, tracking=True)
     target_move = fields.Selection([
         ('posted', 'All Posted Entries'),
         ('all', 'All Entries')],
         string='Target Moves', required=True, default='all',
-        readonly=True, states={'draft': [('readonly', False)]},
         tracking=True)
     source_journal_ids = fields.Many2many(
-        'account.journal', string='Source Journals', readonly=True,
-        states={'draft': [('readonly', False)]}, required=True,
+        'account.journal', string='Source Journals', required=True,
         domain="[('company_id', '=', company_id)]")
     journal_id = fields.Many2one(
         'account.journal', string='VAT Pro Rata Journal', required=True,
         domain="[('company_id', '=', company_id), ('type', '=', 'general')]",
-        states={'done': [('readonly', True)]}, check_company=True)
+        check_company=True)
     move_id = fields.Many2one(
         'account.move', string='VAT Pro Rata Entry', readonly=True,
         copy=False, check_company=True)
     move_label = fields.Char(
         string='Label of the VAT Pro Rata Entry', required=True,
-        states={'done': [('readonly', True)]},
         help="This label will be written in the 'Name' field of the "
         "VAT Pro Rata Journal Items and in the 'Reference' field of "
         "the Journal Entry.")
@@ -86,11 +84,11 @@ class AccountVatProrata(models.Model):
         string='VAT Subject Computed Ratio', readonly=True,
         digits='VAT Pro Rata Ratio', tracking=True)
     used_perct = fields.Float(
-        string='VAT Subject Used Ratio', states={'done': [('readonly', True)]},
+        string='VAT Subject Used Ratio',
         digits='VAT Pro Rata Ratio', tracking=True)
     company_id = fields.Many2one(
         'res.company', string='Company', required=True,
-        states={'done': [('readonly', True)]})
+    )
     company_currency_id = fields.Many2one(
         related='company_id.currency_id', store=True, string='Company Currency')
     state = fields.Selection([
@@ -164,12 +162,12 @@ class AccountVatProrata(models.Model):
                 AND am.date <= %s
             """ + target_move_sql + \
             """
-                GROUP BY aml.account_id, aa.code, aa.vat_subject
-                ORDER BY aa.code
+                GROUP BY aml.account_id, aa.code_store->>%s, aa.vat_subject
+                ORDER BY aa.code_store->>%s
             """
         self._cr.execute(
             request,
-            (self.company_id.id, self.date_from, self.date_to)
+            (self.company_id.id, self.date_from, self.date_to, self.company_id.id, self.company_id.id)
             )
         total = 0.0
         vat_subject_total = 0.0
@@ -213,8 +211,8 @@ class AccountVatProrata(models.Model):
         for tax in deduc_vat_taxes:
             line = tax.invoice_repartition_line_ids.filtered(
                 lambda x: x.repartition_type == "tax"
-                and x.account_id
-                and int(x.factor_percent) == 100
+                and x.account_id.account_type not in ("expense", "expense_depreciation", "expense_direct_cost")
+                and int(x.factor_percent) > 0 
             )
             if len(line) != 1:
                 raise UserError(
@@ -254,9 +252,9 @@ class AccountVatProrata(models.Model):
         vat_deduc_accounts = self._get_vat_deduc_accounts()
         speed_acc2type = {}  # key = account_id, value = internal type
         accounts = aao.search_read(
-            [('company_id', '=', company.id)], ['internal_type'])
+            [('company_ids', 'in', [company.id])], ['account_type'])
         for acc in accounts:
-            speed_acc2type[acc['id']] = acc['internal_type']
+            speed_acc2type[acc['id']] = acc['account_type']
         speed_vattax2rate = {}
         vattaxes = ato.search([
             ('company_id', '=', company.id),
@@ -314,7 +312,8 @@ class AccountVatProrata(models.Model):
                     tmp['total_vat'] += prorata_amt
                 # Expense line with link to a VAT tax
                 elif (
-                        speed_acc2type[line.account_id.id] == 'other' and
+                        # what about account.asset, take this type into account ?
+                        speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost") and
                         line.tax_ids and
                         line.tax_ids[0].id in speed_vattax2rate):
                     vat_rate = speed_vattax2rate[line.tax_ids[0].id]
@@ -325,7 +324,7 @@ class AccountVatProrata(models.Model):
                         'weight': weight}
                     tmp['total_weight_other_tax'] += weight
                 # Expense line without link to a VAT tax
-                elif speed_acc2type[line.account_id.id] == 'other':
+                elif speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost"):
                     vat_rate = 100
                     weight = vat_rate * line.balance
                     tmp['other_notax'][line.id] = {
@@ -450,12 +449,15 @@ class AccountVatProrata(models.Model):
             'move_id': move.id,
             })
 
-    def name_get(self):
-        res = []
+    def _compute_display_name(self):
         for rec in self:
-            name = _('VAT Pro Rata %s -> %s') % (format_date(self.env, rec.date_from), format_date(self.env, rec.date_to))
-            res.append((rec.id, name))
-        return res
+            if rec.date_from and rec.date_to:
+                rec.display_name = self.env._('VAT Pro Rata %s -> %s') % (
+                    format_date(self.env, rec.date_from),
+                    format_date(self.env, rec.date_to)
+                )
+            else:
+                rec.display_name = self.env._('New VAT Pro Rata')
 
     def button_prorata_line_tree(self):
         action = self.env['ir.actions.actions']._for_xml_id(
