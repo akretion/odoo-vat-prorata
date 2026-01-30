@@ -148,6 +148,7 @@
                     <field name="date"/>
                     <field name="partner_id"/>
                     <field name="account_id"/>
+                    <field name="analytic_distribution" widget="analytic_distribution" groups="analytic.group_analytic_accounting"/>
                     <field name="ref"/>
                     <field name="label"/>
                     <field name="start_date"/>
@@ -179,6 +180,7 @@
             <field name="date"/>
             <field name="partner_id" optional="show"/>
             <field name="account_id"/>
+            <field name="analytic_distribution" optional="hide" widget="analytic_distribution" groups="analytic.group_analytic_accounting"/>
             <field name="ref" optional="hide"/>
             <field name="label" optional="show"/>
             <field name="start_date" optional="show"/>

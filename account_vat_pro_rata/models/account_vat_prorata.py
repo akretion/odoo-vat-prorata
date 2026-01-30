@@ -412,8 +412,55 @@ class AccountVatProrata(models.Model):
                 'counterpart_amount': amt,
                 'vat_rate': ldict['vat_rate'],
                 'original_amount': ldict['bal'],
+                "analytic_distribution": self.env["account.move.line"].browse(line_id).analytic_distribution,
                 })
             i -= 1
+
+    def _get_consolidated_analytic_distribution(self, lines):
+        total_amount = sum(lines.mapped('counterpart_amount'))
+        if self.company_id.currency_id.is_zero(total_amount):
+            return {}
+    
+        distribution_by_plan = {}
+
+        # get sum by plan and analytic account
+        for line in lines:
+            if not line.analytic_distribution:
+                continue
+    
+            for analytic_id, percentage in line.analytic_distribution.items():
+                analytic_account = self.env["account.analytic.account"].browse(int(analytic_id))
+                plan = analytic_account.plan_id
+    
+                if plan.id not in distribution_by_plan:
+                    distribution_by_plan[plan.id] = {}
+    
+                share = line.counterpart_amount * (percentage / 100.0)
+                distribution_by_plan[plan.id][analytic_account.id] = \
+                    distribution_by_plan[plan.id].get(analytic_account.id, 0.0) + share
+    
+        # Convert to amounts to ratio
+        final_distribution = {}
+        for plan_id, analytics in distribution_by_plan.items():
+            plan_dist = {}
+            for analytic_id, total_share in analytics.items():
+                plan_dist[analytic_id] = round((total_share / total_amount) * 100.0, 2)
+    
+            # Manage rounding issues : If the sum of the rato is really near 100%
+            # we consider it is a rounding issue and we round it to 100%
+            # else we consider that maybe the plan is optional and we keep the partial
+            # percentage. Hard to manage all cases otherwise (mandatory plan  /
+            # mandatory only on some case, became mandatory in the middle of the month
+            current_sum = sum(plan_dist.values())
+            if current_sum > 99.9 and current_sum < 100.1:
+                # get the key that have the bigget value
+                max_key = max(plan_dist, key=plan_dist.get)
+                plan_dist[max_key] = round(plan_dist[max_key] + (100.0 - current_sum), 2)
+    
+            # On fusionne dans le dictionnaire final
+            final_distribution.update(plan_dist)
+    
+        return final_distribution
 
     def prepare_move(self):
         self.ensure_one()
@@ -421,20 +468,17 @@ class AccountVatProrata(models.Model):
         ccur = company.currency_id
         if not self.line_ids:
             raise UserError(_('There are no lines'))
-        dlines = defaultdict(float)
+        grouped_lines = defaultdict(lambda: self.env['account.vat.prorata.line'])
         for line in self.line_ids:
-            if not ccur.is_zero(line.prorata_vat_amount):
-                amt = line.prorata_vat_amount
-            elif not ccur.is_zero(line.counterpart_amount):
-                amt = - line.counterpart_amount
-            else:
+            if ccur.is_zero(line.prorata_vat_amount) and ccur.is_zero(line.counterpart_amount):
                 continue
 
             key = (
                 line.account_id,
                 line.start_date or False,
-                line.end_date or False)
-            dlines[key] += amt
+                line.end_date or False
+            )
+            grouped_lines[key] |= line
         lines = []
         # Needed to neutralise default asset profile that may be
         # configured on asset account and that will block
@@ -443,17 +487,24 @@ class AccountVatProrata(models.Model):
         if hasattr(self.env['account.account'], 'asset_profile_id'):
             asset_installed = True
         # for ordering by account code
-        for (key, amount) in dlines.items():
+        for key, prorata_lines in grouped_lines.items():
             account, start_date, end_date = key
+            amount = sum(
+                line.prorata_vat_amount if not ccur.is_zero(line.prorata_vat_amount) else -line.counterpart_amount 
+                for line in prorata_lines
+            )
+            amount = ccur.round(amount)
             lvals = {
                 'start_date': start_date,
                 'end_date': end_date,
                 'account_id': account.id,
                 'account_code': account.code,  # for sorting
                 }
+            if account.account_type in ('expense', 'expense_depreciation', 'expense_direct_cost'):
+                lvals['analytic_distribution'] = self._get_consolidated_analytic_distribution(prorata_lines)
+
             if asset_installed:
                 lvals['asset_profile_id'] = False
-            amount = ccur.round(amount)
             if ccur.compare_amounts(amount, 0) > 0:
                 lvals['credit'] = amount
             else:
@@ -558,3 +609,11 @@ class AccountVatProrataLine(models.Model):
         related='line_id.start_date', store=True)
     end_date = fields.Date(
         related='line_id.end_date', store=True)
+    company_id = fields.Many2one(related="parent_id.company_id")
+    analytic_distribution = fields.Json(readonly=True)
+    # we do not really need the mixing so we add this field here
+    analytic_precision = fields.Integer(
+        store=False,
+        default=lambda self: self.env['decimal.precision'].precision_get("Percentage Analytic"),
+    )
+
