@@ -19,6 +19,14 @@
                 <button name="button_back2draft" type="object" string="Back to Draft" invisible="state not in ('ratio', 'done')"/>
                 <field name="state" widget="statusbar"/>
             </header>
+            <div class="alert alert-warning text-center o_form_header" 
+                 role="status" 
+                 invisible="not warning_reversal">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="fa fa-exclamation-triangle me-2" title="Attention"/>
+                    <field name="warning_reversal" nolabel="1" class="fw-bold"/>
+                </div>
+            </div>
             <sheet>
                 <div class="oe_button_box" name="button_box">
                     <button name="button_prorata_line_tree"

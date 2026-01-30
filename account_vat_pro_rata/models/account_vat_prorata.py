@@ -97,12 +97,43 @@ class AccountVatProrata(models.Model):
         ('done', 'Done'),
         ], string='State', index=True, readonly=True,
         tracking=True, default='draft', copy=False)
+    warning_reversal = fields.Char(compute="_compute_warning_reversal")
 
     _sql_constraints = [(
         'date_company_uniq',
         'unique(date_to, date_from, company_id)',
         'A pro rata VAT already exists in this company for the same dates!'
         )]
+
+    def _get_previous_prorata_domain(self):
+        self.ensure_one()
+        return [
+            ('date_to', '<', self.date_to),
+            ('company_id', '=', self.company_id.id),
+            ('state', '=', 'done')
+        ]
+
+    def _get_previous_prorata(self):
+        self.ensure_one()
+        domain = self._get_previous_prorata_domain()
+        return self.search(domain, order="date_to desc", limit=1)
+
+    def _compute_warning_reversal(self):
+        for rec in self:
+            last = rec._get_previous_prorata()
+
+            # reversal is needed for all month but the last of the fiscalyear.
+            # so the first month, no need to check (because we check last month)
+            if rec.date_from.month == rec.date_to.month or not last:
+                rec.warning_reversal = False
+                continue
+            if not last.move_id.reversal_move_ids.filtered(lambda m: m.state == "posted"):
+                rec.warning_reversal = self.env._(
+                    "Missing Reversal! The previous calculation (%s) "
+                    "has not been reversed, or the reversal has not been validated"
+                ) % (last.display_name,)
+            else:
+                rec.warning_reversal = False
 
     @api.constrains('date_from', 'date_to')
     def _check_vat_prorata(self):
