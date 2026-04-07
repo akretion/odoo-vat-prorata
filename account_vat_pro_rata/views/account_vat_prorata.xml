@@ -43,7 +43,8 @@
                 <group name="top">
                     <group name="top-left">
                         <field name="date_from" options="{'datepicker': {'warn_future': true}}" readonly="state != 'draft'"/>
-                        <field name="date_to" options="{'datepicker': {'warn_future': true}}" readonly="state != 'draft'"/>
+			<field name="date_to" options="{'datepicker': {'warn_future': true}}" readonly="state != 'draft'"/>
+			<field name="ratio_source_journal_ids" widget="many2many_tags" readonly="state != 'draft'"/>
                         <label for="computed_perct"/>
                         <div>
                             <field name="computed_perct" class="oe_inline"/> %
