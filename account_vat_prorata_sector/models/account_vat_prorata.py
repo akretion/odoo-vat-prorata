@@ -2,6 +2,7 @@
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from dateutil.relativedelta import relativedelta
 
 
 class AccountVatProrata(models.Model):
