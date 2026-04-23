@@ -11,9 +11,10 @@ class AccountVatProrata(models.Model):
     @api.depends("source_journal_ids")
     def _compute_prorata_type(self):
         for rec in self:
-            if len(self.source_journal_ids) == 1 and self.source_journal_ids.vat_prorata_type:
-                if rec.prorata_type != self.source_journal_ids.vat_prorata_type:
-                    rec.prorata_type = self.source_journal_ids.vat_prorata_type
+            if self.source_journal_ids and len(set(self.source_journal_ids.mapped('vat_prorata_type'))) == 1:
+                journals_prorata_type = self.source_journal_ids[0].vat_prorata_type
+                if rec.prorata_type != journals_prorata_type:
+                    rec.prorata_type = journals_prorata_type
 
     @api.depends("prorata_type")
     def _compute_source_journal_ids(self):
@@ -93,6 +94,17 @@ class AccountVatProrata(models.Model):
                         'date_from': date_from_monthly,
                         'source_journal_ids': [(6, 0, journals.ids)],
                     })
+                # nothing to do actually...default to prorata
+                else:
+                    journals = self.env['account.journal'].search([
+                        ('vat_prorata_type', '=', 'computed'),
+                        ('company_id', '=', company_id)
+                    ])
+                    res.update({
+                        'prorata_type': 'computed',
+                        'source_journal_ids': [(6, 0, journals.ids)],
+                    })
+
         else:
             # 3. If annual is not done, we stick with 'computed' 
             # but filter journals accordingly
