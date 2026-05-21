@@ -358,8 +358,7 @@ class AccountVatProrata(models.Model):
                     tmp['total_vat'] += prorata_amt
                 # Expense line with link to a VAT tax
                 elif (
-                        # what about account.asset, take this type into account ?
-                        speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost") and
+                        speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost", "asset_fixed") and
                         line.tax_ids and
                         line.tax_ids[0].id in speed_vattax2rate):
                     vat_rate = speed_vattax2rate[line.tax_ids[0].id]
@@ -370,7 +369,7 @@ class AccountVatProrata(models.Model):
                         'weight': weight}
                     tmp['total_weight_other_tax'] += weight
                 # Expense line without link to a VAT tax
-                elif speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost"):
+                elif speed_acc2type[line.account_id.id] in ("expense", "expense_depreciation", "expense_direct_cost", "asset_fixed"):
                     vat_rate = 100
                     weight = vat_rate * line.balance
                     tmp['other_notax'][line.id] = {
@@ -515,7 +514,7 @@ class AccountVatProrata(models.Model):
                 'account_id': account.id,
                 'account_code': account.code,  # for sorting
                 }
-            if account.account_type in ('expense', 'expense_depreciation', 'expense_direct_cost'):
+            if account.account_type in ('expense', 'expense_depreciation', 'expense_direct_cost', 'asset_fixed'):
                 lvals['analytic_distribution'] = self._get_consolidated_analytic_distribution(prorata_lines)
 
             if asset_installed:
