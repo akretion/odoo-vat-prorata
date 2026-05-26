@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="account_vat_prorata_form_inherit" model="ir.ui.view">
+        <field name="model">account.vat.prorata</field>
+        <field name="inherit_id" ref="account_vat_pro_rata.account_vat_prorata_form"/>
+        <field name="arch" type="xml">
+            <field name="date_from" position="before">
+                <field name="prorata_type" widget="radio" 
+                       readonly="state != 'draft'" 
+                       options="{'horizontal': true}"/>
+            </field>
+
+            <field name="used_perct" position="attributes">
+                <attribute name="readonly">state == 'done' or prorata_type == 'zero'</attribute>
+            </field>
+
+            <xpath expr="//group[@name='subject_lines']" position="attributes">
+                <attribute name="invisible">prorata_type == 'zero'</attribute>
+            </xpath>
+            <xpath expr="//group[@name='nosubject_lines']" position="attributes">
+                <attribute name="invisible">prorata_type == 'zero'</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='computed_perct']" position="attributes">
+                <attribute name="readonly">prorata_type == 'zero' or state != 'draft'</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="account_vat_prorata_tree_inherit" model="ir.ui.view">
+        <field name="name">account.vat.prorata.list.inherit.sector</field>
+        <field name="model">account.vat.prorata</field>
+        <field name="inherit_id" ref="account_vat_pro_rata.account_vat_prorata_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='date_from']" position="before">
+                <field name="prorata_type" widget="badge" 
+                       decoration-info="prorata_type == 'computed'" 
+                       decoration-muted="prorata_type == 'zero'"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
