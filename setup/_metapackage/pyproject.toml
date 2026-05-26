@@ -1,8 +1,9 @@
 [project]
 name = "odoo-addons-akretion-odoo-vat-prorata"
-version = "18.0.20260407.0"
+version = "18.0.20260526.0"
 dependencies = [
     "odoo-addon-account_vat_pro_rata==18.0.*",
+    "odoo-addon-account_vat_prorata_sector==18.0.*",
 ]
 classifiers=[
     "Programming Language :: Python",
