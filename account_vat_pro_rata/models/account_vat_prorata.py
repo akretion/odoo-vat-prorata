@@ -476,6 +476,36 @@ class AccountVatProrata(models.Model):
     
         return final_distribution
 
+    def _get_prorata_grouping_key(self, line):
+        return (line.account_id, line.start_date or False, line.end_date or False)
+
+    def _get_misc_entry_line_vals(self, key, prorata_lines, ccur, asset_installed):
+        account = key[0]
+        start_date = key[1]
+        end_date = key[2]
+        amount = sum(
+            line.prorata_vat_amount if not ccur.is_zero(line.prorata_vat_amount) else -line.counterpart_amount 
+            for line in prorata_lines
+        )
+        amount = ccur.round(amount)
+        lvals = {
+            'start_date': start_date,
+            'end_date': end_date,
+            'account_id': account.id,
+            'account_code': account.code,  # for sorting
+            }
+        if account.account_type in ('expense', 'expense_depreciation', 'expense_direct_cost', 'asset_fixed'):
+            lvals['analytic_distribution'] = self._get_consolidated_analytic_distribution(prorata_lines)
+
+        if asset_installed:
+            lvals['asset_profile_id'] = False
+        if ccur.compare_amounts(amount, 0) > 0:
+            lvals['credit'] = amount
+        else:
+            lvals['debit'] = amount * -1
+        return lvals
+
+
     def prepare_move(self):
         self.ensure_one()
         company = self.company_id
@@ -487,11 +517,7 @@ class AccountVatProrata(models.Model):
             if ccur.is_zero(line.prorata_vat_amount) and ccur.is_zero(line.counterpart_amount):
                 continue
 
-            key = (
-                line.account_id,
-                line.start_date or False,
-                line.end_date or False
-            )
+            key = self._get_prorata_grouping_key(line)    
             grouped_lines[key] |= line
         lines = []
         # Needed to neutralise default asset profile that may be
@@ -502,28 +528,7 @@ class AccountVatProrata(models.Model):
             asset_installed = True
         # for ordering by account code
         for key, prorata_lines in grouped_lines.items():
-            account, start_date, end_date = key
-            amount = sum(
-                line.prorata_vat_amount if not ccur.is_zero(line.prorata_vat_amount) else -line.counterpart_amount 
-                for line in prorata_lines
-            )
-            amount = ccur.round(amount)
-            lvals = {
-                'start_date': start_date,
-                'end_date': end_date,
-                'account_id': account.id,
-                'account_code': account.code,  # for sorting
-                }
-            if account.account_type in ('expense', 'expense_depreciation', 'expense_direct_cost', 'asset_fixed'):
-                lvals['analytic_distribution'] = self._get_consolidated_analytic_distribution(prorata_lines)
-
-            if asset_installed:
-                lvals['asset_profile_id'] = False
-            if ccur.compare_amounts(amount, 0) > 0:
-                lvals['credit'] = amount
-            else:
-                lvals['debit'] = amount * -1
-            lines.append(lvals)
+            lines.append(self._get_misc_entry_line_vals(key, prorata_lines, ccur, asset_installed))
 
         # Order by account code
         ordered_lines = sorted(lines, key=lambda x: x['account_code'])
